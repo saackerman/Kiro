@@ -1,15 +1,19 @@
 # Instructions add to .kiro/steering/powershell-api.md
-
 # PowerShell 7.5+ REST API Coding Standards
 
 ## Core Cmdlet Requirements
 * Always use `Invoke-RestMethod` (or alias `irm`) for interacting with REST endpoints.
-* Leverage modern parameters like `-StatusCodeVariable` and `-ResponseHeadersVariable` for robust response tracking instead of try/catch parsing.
+* Leverage modern parameters like `-StatusCodeVariable` and `-ResponseHeadersVariable` for robust response tracking.
 * Do not pipe `Invoke-RestMethod` output to another command without explicitly handling array boundaries (`[Object[]]`).
 
-## Payload Handling & JSON Formatting
+## Mandatory Splatting Pattern
+* **Rule:** Always use splatting for API calls. Consolidate your arguments into an array or a hash table named `$Params`, and pass it using `@Params`. Do not string long lists of parameters inline.
+* **Reason:** This keeps code scannable, clean, and modular.
+
+## Payload Handling & JSON Depth
 * Explicitly pass `-ContentType "application/json"` on all mutation operations (`POST`, `PUT`, `PATCH`).
-* When generating JSON payloads, use `ConvertTo-Json -Depth 10` to avoid implicit truncation of nested arrays/objects.
+* **Rule:** Always append `-Depth 10` (or higher if required) when using `ConvertTo-Json`. 
+* **Reason:** PowerShell defaults to a depth limit of 2. Forgetting this truncates nested objects into simple strings, breaking SaaS payloads.
 * Use Ordered Hashtables (`[ordered]@{}`) before converting to JSON to ensure predictable payload structures.
 
 ## Error Handling
@@ -20,8 +24,8 @@
   ```powershell
   \$Payload = [ordered]@{
       name = "azure-vm-01"
-      tags = @{ env = "production" }
-  } | ConvertTo-Json -Depth 5
+      tags = @{ env = "production"; tier = "web" }
+  } | ConvertTo-Json -Depth 10
 
   \$Params = @{
       Uri                = "https://azure.com"
@@ -32,9 +36,9 @@
   }
   \$Response = Invoke-RestMethod @Params
   ```
-* **Bad (Legacy / Obsolete):**
+* **Bad:**
   ```powershell
-  # Missing explicit depth, missing modern status code checks, no ordered hashtable
+  # Inline parameter bloat, no ordered hash, and default depth will truncate the 'tags' object
   \$Body = @{ name = "azure-vm-01"; tags = @{ env = "production" } } | ConvertTo-Json
-  try { Invoke-RestMethod -Uri \$Uri -Method Post -Body Body catch _.Exception }
+  Invoke-RestMethod -Uri "https://..." -Method Post -Body \$Body -ContentType "application/json"
   ```
